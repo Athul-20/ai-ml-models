@@ -1,0 +1,178 @@
+import os
+import numpy as np
+import pandas as pd
+import cv2
+import tensorflow as tf
+from tensorflow.keras.applications import MobileNetV2
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tensorflow.keras import regularizers
+from tensorflow.keras.optimizers import Adam
+
+# Load the dataset
+def load_images_and_labels(part1_dir, part2_dir, metadata_path):
+    images = []
+    labels = []
+    metadata = pd.read_csv(metadata_path)
+    
+    # Load images from part 1
+    for img_name in os.listdir(part1_dir):
+        img_path = os.path.join(part1_dir, img_name)
+        img = cv2.imread(img_path)
+        img = cv2.resize(img, (224, 224))  # Resize for MobileNetV2
+        images.append(img)
+        label = metadata.loc[metadata['image_id'] == img_name.split('.')[0], 'dx'].values[0]
+        labels.append(label)
+
+    # Load images from part 2
+    for img_name in os.listdir(part2_dir):
+        img_path = os.path.join(part2_dir, img_name)
+        img = cv2.imread(img_path)
+        img = cv2.resize(img, (224, 224))
+        images.append(img)
+        label = metadata.loc[metadata['image_id'] == img_name.split('.')[0], 'dx'].values[0]
+        labels.append(label)
+
+    return np.array(images), np.array(labels)
+
+# Paths for data
+part1_dir = '/kaggle/input/skin-cancer-mnist-ham10000/HAM10000_images_part_1'
+part2_dir = '/kaggle/input/skin-cancer-mnist-ham10000/HAM10000_images_part_2'
+metadata_path = '/kaggle/input/skin-cancer-mnist-ham10000/HAM10000_metadata.csv'
+
+# Load data
+images, labels = load_images_and_labels(part1_dir, part2_dir, metadata_path)
+
+# Encode labels
+le = LabelEncoder()
+labels_encoded = le.fit_transform(labels)
+
+# Train-test-validation split
+X_train, X_temp, y_train, y_temp = train_test_split(images, labels_encoded, test_size=0.3, random_state=42)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
+
+# Normalize images
+X_train = X_train.astype('float32') / 255.0
+X_val = X_val.astype('float32') / 255.0
+X_test = X_test.astype('float32') / 255.0
+
+# Data Augmentation
+datagen = tf.keras.preprocessing.image.ImageDataGenerator(
+    rotation_range=45,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.3,
+    brightness_range=[0.8, 1.2],
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
+
+# Feature Extraction using MobileNetV2
+def feature_extraction_mobilenet(input_shape):
+    base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=input_shape)
+    for layer in base_model.layers[-30:]:  # Fine-tune last 30 layers
+        layer.trainable = True
+
+    model = tf.keras.Sequential([
+        base_model,
+        tf.keras.layers.GlobalAveragePooling2D(),
+        tf.keras.layers.BatchNormalization()  # Add Batch Normalization
+    ])
+    return model
+
+# Extract features from the MobileNet model
+mobilenet_model = feature_extraction_mobilenet((224, 224, 3))
+
+# Get features
+mobilenet_train_features = mobilenet_model.predict(X_train)
+mobilenet_val_features = mobilenet_model.predict(X_val)
+mobilenet_test_features = mobilenet_model.predict(X_test)
+
+# Multiclass Classification Model
+def create_classification_model(input_shape, num_classes):
+    model = tf.keras.Sequential([
+        tf.keras.layers.Dense(256, activation='relu', input_shape=input_shape, kernel_regularizer=regularizers.l2(0.01)),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Dropout(0.4),
+        tf.keras.layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.01)),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Dropout(0.4),
+        tf.keras.layers.Dense(num_classes, activation='softmax')
+    ])
+    model.compile(optimizer=Adam(learning_rate=0.0001),
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+    return model
+
+# Initialize and train the model
+num_classes = len(np.unique(y_train))
+classification_model = create_classification_model((mobilenet_train_features.shape[1],), num_classes)
+
+# Early stopping and learning rate reduction
+early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6)
+
+history = classification_model.fit(
+    mobilenet_train_features, y_train,
+    epochs=50,  # Increase epochs
+    validation_data=(mobilenet_val_features, y_val),
+    batch_size=32,
+    callbacks=[early_stopping, reduce_lr]
+)
+
+# Evaluate on the test set
+test_predictions = np.argmax(classification_model.predict(mobilenet_test_features), axis=-1)
+
+# Metrics and Evaluation
+accuracy = accuracy_score(y_test, test_predictions)
+print(f"Test Set Accuracy: {accuracy:.2f}")
+
+# Classification Report
+class_report = classification_report(y_test, test_predictions, target_names=le.classes_)
+print("Classification Report:\n", class_report)
+
+# Confusion Matrix
+cm = confusion_matrix(y_test, test_predictions)
+plt.figure(figsize=(10, 8))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
+plt.xlabel('Predicted Labels')
+plt.ylabel('True Labels')
+plt.title('Confusion Matrix')
+plt.show()
+
+# Plot Accuracy and Loss Curves
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Val Accuracy')
+plt.title('Accuracy Curve')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Val Loss')
+plt.title('Loss Curve')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+# ROC Curves and AUC for each class
+plt.figure(figsize=(10, 8))
+for i in range(num_classes):
+    fpr, tpr, _ = roc_curve(y_test == i, test_predictions == i)
+    plt.plot(fpr, tpr, label=f'{le.classes_[i]} (AUC = {auc(fpr, tpr):.2f})')
+plt.plot([0, 1], [0, 1], 'k--')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve per Class')
+plt.legend(loc='lower right')
+plt.show()
