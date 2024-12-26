@@ -1,0 +1,86 @@
+import pandas as pd
+import numpy as np
+from sklearn.tree import DecisionTreeClassifier
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
+from sklearn.tree import export_text
+
+
+# Create a DataFrame with the given dataset
+data = {
+'House Furniture': ['No', 'Yes', 'No', 'No', 'Yes'],
+'No. of Rooms': [3, 3, 4, 3, 4],
+'New Kitchen': ['Yes', 'No', 'Yes', 'No', 'No'],
+'Acceptable': ['Yes', 'No', 'Yes', 'No', 'Yes']
+}
+df = pd.DataFrame(data)
+
+# Mapping categorical features to numerical values
+df['House Furniture'] = df['House Furniture'].map({'No': 0, 'Yes': 1})
+df['New Kitchen'] = df['New Kitchen'].map({'No': 0, 'Yes': 1})
+df['Acceptable'] = df['Acceptable'].map({'No': 0, 'Yes': 1})
+
+
+# Split the data into features (X) and target (y)
+X = df.drop('Acceptable', axis=1)
+y = df['Acceptable']
+
+
+# Create and fit a decision tree classifier
+clf = DecisionTreeClassifier()
+clf.fit(X, y)
+
+# Print the decision tree rules
+tree_rules = export_text(clf, feature_names=list(X.columns))
+print("Decision Tree Rules:")
+print(tree_rules)
+
+def calculate_information_gain(X, y, feature):
+    # Split the dataset based on the selected feature
+    X_train, X_test, y_train, y_test = train_test_split(X[[feature]], y, test_size=0.2, random_state=42)
+
+    # Calculate entropy before the split (parent node entropy)
+    def entropy(labels):
+        unique_labels, label_counts = np.unique(labels, return_counts=True)
+        probabilities = label_counts / len(labels)
+        return -np.sum(probabilities * np.log2(probabilities + 1e-10))  # Adding a small epsilon to avoid log(0)
+
+    parent_entropy = entropy(y_train)
+
+    # Create the decision tree model and fit it on the training data
+    model = DecisionTreeClassifier(criterion='entropy', random_state=42, max_depth=1)
+    model.fit(X_train, y_train)
+
+    # Calculate weighted entropy after the split (child nodes)
+    tree = model.tree_
+    weighted_child_entropy = 0
+    for i in range(tree.node_count):
+        if tree.children_left[i] != tree.children_right[i]:  # Check if it's a non-leaf node
+            left_child_samples = tree.n_node_samples[tree.children_left[i]]
+            right_child_samples = tree.n_node_samples[tree.children_right[i]]
+            total_samples = tree.n_node_samples[i]
+
+            left_child_weight = left_child_samples / total_samples
+            right_child_weight = right_child_samples / total_samples
+
+            left_child_entropy = tree.impurity[tree.children_left[i]]
+            right_child_entropy = tree.impurity[tree.children_right[i]]
+
+            weighted_child_entropy += left_child_weight * left_child_entropy + right_child_weight * right_child_entropy
+
+    # Information gain is the difference between parent entropy and weighted child entropy
+    information_gain = parent_entropy - weighted_child_entropy
+
+    return information_gain
+print("Entropy:", entropy)
+model = DecisionTreeClassifier(criterion='entropy')
+
+
+# Display information gain for each feature
+print("Information Gain for each feature:")
+for feature in X.columns:
+    information_gain = calculate_information_gain(X, y, feature)
+    print(f"{feature}: {information_gain:.4f}")
+
+
+
