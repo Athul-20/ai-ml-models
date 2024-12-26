@@ -1,0 +1,55 @@
+import pandas as pd
+data = [
+[1, 4000, 10000, 21000, 35500, 12000, 18000, 15450, 185000],
+[2, 2500, 12000, 25000, 35500, 21000, 22000, 12000, 201000],
+[3, 5200, 11000, 28000, 35500, 18000, 25000, 13450, 206000],
+[4, 4100, 12000, 23000, 35500, 21000, 21000, 11300, 200500],
+[5, 5550, 10000, 24000, 35500, 18000, 19000, 17450, 194000],
+[6, 7900, 10000, 21000, 35500, 22000, 22000, 19450, 220000],
+[7, 9100, 12000, 23000, 35500, 21000, 21000, 20100, 230000],
+[8, 3550, 10000, 25000, 35500, 23000, 24000, 25400, 240000],
+[9, 7900, 10000, 21000, 35500, 24000, 22000, 27100, 240000],
+[10, 3100, 12000, 23000, 35500, 21000, 21000, 35450, 270000],
+[11, 8550, 10000, 21000, 35500, 23000, 24000, 36800, 260000],
+[12, 2900, 10000, 23000, 35500, 24000, 22000, 49200, 290000]]
+columns = ['month_number', 'facecream', 'facewash', 'toothpaste',
+'bathingsoap', 'shampoo', 'moisturizer', 'total_units', 'total_profit']
+df = pd.DataFrame(data, columns=columns)
+df.to_csv('five.csv', index=False)
+import matplotlib.pyplot as plt
+# Load the data from the CSV file
+data = pd.read_csv('five.csv')
+# Scatter plot for toothpaste sales data of each month
+plt.figure(figsize=(8, 6))
+plt.scatter(data['month_number'], data['toothpaste'], color='blue')
+plt.title('Toothpaste Sales Data')
+plt.xlabel('Month')
+plt.ylabel('Toothpaste Sales')
+plt.xticks(range(1, 13))
+plt.grid(True)
+plt.show()
+plt.figure(figsize=(8, 6))
+plt.bar(data['month_number'], data['facecream'], width=0.4,
+label='Face Cream', align='center', alpha=0.7)
+plt.bar(data['month_number'] + 0.4, data['facewash'], width=0.4,
+label='Face Wash', align='center', alpha=0.7)
+plt.title('Face Cream and Face Wash Sales Data')
+plt.xlabel('Month')
+plt.ylabel('Sales')
+plt.xticks(range(1, 13), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul',
+'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+plt.legend()
+plt.grid(True)
+plt.show()
+last_year_data = data[data['month_number'] >= 1] # Assuming the
+
+total_sales = last_year_data[['facecream', 'facewash', 'toothpaste',
+'bathingsoap', 'shampoo', 'moisturizer']].sum()
+# Pie chart for total sale data
+labels = total_sales.index
+sizes = total_sales.values
+plt.figure(figsize=(8, 6))
+plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+plt.title('Total Sale Data for Last Year')
+plt.show()
+
