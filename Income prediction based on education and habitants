@@ -1,0 +1,46 @@
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+
+# Given dataset
+data = {
+    'Age': [30, 40, 25, 35, 28],
+    'Gender': ['Female', 'Male', 'Male', 'Male', 'Female'],
+    'Education': ['Graduate', 'Diploma', 'Post-Graduate', 'Diploma', 'Graduate'],
+    'Industry': ['IT', 'Manufacturing', 'Finance', 'Manufacturing', 'IT'],
+    'Residence': ['Non-metro', 'Metro', 'Non-metro', 'Metro', 'Metro'],
+    'Income': ['Below 4,00,000', 'More than 15,00,000', 'Between 4,00,000 - 15,00,000',
+               'Between 4,00,000 - 15,00,000', 'Below 4,00,000']
+}
+df = pd.DataFrame(data)
+print(df)
+
+# Convert categorical variables to numerical values
+df['Gender'] = df['Gender'].map({'Male': 0, 'Female': 1})
+df['Education'] = df['Education'].map({'Diploma': 0, 'Graduate': 1, 'Post-Graduate': 2})
+df['Industry'] = df['Industry'].astype('category').cat.codes
+df['Residence'] = df['Residence'].map({'Metro': 0, 'Non-metro': 1})
+df['Income'] = df['Income'].astype('category').cat.codes
+
+# Features and target variable
+X = df[['Age', 'Gender', 'Education', 'Industry', 'Residence']]
+y = df['Income']
+
+# Train the Random Forest Classifier
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X, y)
+
+# Make predictions for the given individual traits
+new_data = np.array([[35, 0, 0, 1, 0]])  # Age: 35, Gender: Male, Education: Diploma, Industry: Manufacturing, Residence: Metro
+prediction = clf.predict(new_data)
+
+# Map the predicted value back to the original income category
+category_mapping = {
+    0: 'Below 4,00,000',
+    1: 'Between 4,00,000 - 15,00,000',
+    2: 'More than 15,00,000'
+}
+
+# Map the predicted category to the original income category
+predicted_income_original = category_mapping[prediction[0]]
+print(f"The predicted original income category is: {predicted_income_original}")
